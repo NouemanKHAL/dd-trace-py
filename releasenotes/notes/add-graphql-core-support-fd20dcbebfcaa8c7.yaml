@@ -1,0 +1,6 @@
+---
+features:
+  - |
+    graphql: add tracing for ``graphql-core>2``.
+  - |
+    graphql: set ``DD_TRACE_GRAPHQL_RESOLVERS_ENABLED=True`` to instrument graphql resolvers.
