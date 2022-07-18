@@ -129,7 +129,7 @@ venv = Venv(
             ],
         ),
         Venv(
-            pys=["3"],
+            pys=["3.9"],
             name="mypy",
             command="mypy {cmdargs}",
             create=True,
@@ -1156,6 +1156,32 @@ venv = Venv(
             ],
         ),
         Venv(
+            name="pymysql",
+            command="pytest {cmdargs} tests/contrib/pymysql",
+            venvs=[
+                Venv(
+                    pys=select_pys(),
+                    pkgs={
+                        "pymysql": [
+                            "~=0.7",
+                            "~=0.8",
+                            "~=0.9",
+                        ],
+                    },
+                ),
+                Venv(
+                    # 1.x dropped support for 2.7 and 3.5
+                    pys=select_pys(min_version="3.6"),
+                    pkgs={
+                        "pymysql": [
+                            "~=1.0",
+                            latest,
+                        ],
+                    },
+                ),
+            ],
+        ),
+        Venv(
             name="pyramid",
             venvs=[
                 Venv(
@@ -1472,20 +1498,20 @@ venv = Venv(
         Venv(
             name="cassandra",
             venvs=[
-                # Python 3.9 requires a more recent release.
+                # cassandra-driver does not officially support 3.10
+                # TODO: fix sporadically failing tests in cassandra-driver v3.25.0 and py3.10
                 Venv(
-                    pys=select_pys(min_version="3.9"),
+                    pys=["3.9"],
                     pkgs={"cassandra-driver": latest},
                 ),
                 # releases 3.7 and 3.8 are broken on Python >= 3.7
                 # (see https://github.com/r4fek/django-cassandra-engine/issues/104)
-                Venv(
-                    pys=["3.7", "3.8"],
-                    pkgs={"cassandra-driver": ["~=3.6.0", "~=3.15.0", latest]},
-                ),
+                Venv(pys=["3.7", "3.8"], pkgs={"cassandra-driver": ["~=3.6.0", "~=3.15.0", "~=3.24.0", latest]}),
                 Venv(
                     pys=select_pys(max_version="3.6"),
-                    pkgs={"cassandra-driver": [("~=3.%d.0" % m) for m in range(6, 9)] + ["~=3.15.0", latest]},
+                    pkgs={
+                        "cassandra-driver": [("~=3.%d.0" % m) for m in range(6, 9)] + ["~=3.15.0", "~=3.24.0", latest]
+                    },
                 ),
             ],
             command="pytest {cmdargs} tests/contrib/cassandra",
