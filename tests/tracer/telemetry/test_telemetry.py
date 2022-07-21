@@ -9,7 +9,7 @@ from ddtrace.internal.service import ServiceStatus
 
 @pytest.fixture
 def telemetry_writer():
-    yield telemetry.telemetry_writer
+    yield telemetry.TelemetryWriter()
 
 
 @pytest.fixture(autouse=True)

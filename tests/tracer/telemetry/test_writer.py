@@ -1,4 +1,6 @@
 import os
+import time
+from typing import Any
 
 import httpretty
 import mock
@@ -32,7 +34,7 @@ def mock_send_request(mock_status):
 def mock_time():
     with mock.patch("time.time") as mt:
         mt.return_value = 1642544540
-        yield
+        yield mt
 
 
 @pytest.fixture
@@ -122,6 +124,107 @@ def test_app_started_event(mock_time, mock_send_request, telemetry_writer):
         "configurations": [],
     }
     assert httpretty.last_request().parsed_body == _get_request_body(payload, "app-started")
+
+
+def test_app_heartbeat_event_periodic(mock_time, mock_send_request, telemetry_writer):
+    # type: (mock.Mock, Any, TelemetryWriter) -> None
+    """asserts that we queue/send app-heartbeat event every 60 seconds when periodc() is called"""
+
+    def assert_app_heartbeat_event(seq_id):
+        assert len(httpretty.latest_requests()) == seq_id
+        request = httpretty.last_request()
+        assert request.headers["DD-Telemetry-Request-Type"] == "app-heartbeat"
+        assert request.parsed_body == _get_request_body({}, "app-heartbeat", seq_id=seq_id)
+
+    # Assert clean slate
+    assert len(httpretty.latest_requests()) == 0
+
+    # Assert first flush does not queue any events
+    telemetry_writer.periodic()
+    assert len(httpretty.latest_requests()) == 0
+
+    # Advance time 60 seconds
+    mock_time.return_value += 60
+
+    # Assert next flush contains app-heartbeat event
+    telemetry_writer.periodic()
+    assert_app_heartbeat_event(1)
+
+    # Advance time 59 seconds
+    mock_time.return_value += 59
+
+    # Assert next flush does not contain an app-heartbeat event
+    telemetry_writer.periodic()
+    assert len(httpretty.latest_requests()) == 1
+
+    # Advance time 1 second
+    mock_time.return_value += 1
+
+    # Assert next flush contains app-heartbeat event
+    telemetry_writer.periodic()
+    assert_app_heartbeat_event(2)
+
+    # Advance time 120 seconds (2 intervals)
+    mock_time.return_value += 120
+
+    # Assert next flush contains only one app-heartbeat event
+    telemetry_writer.periodic()
+    assert_app_heartbeat_event(3)
+
+
+def test_app_heartbeat_event(mock_time, mock_send_request, telemetry_writer):
+    # type: (mock.Mock, Any, TelemetryWriter) -> None
+    """asserts that we queue/send app-heartbeat event every 60 seconds when app_heartbeat_event() is called"""
+
+    def assert_app_heartbeat_event(seq_id):
+        assert len(httpretty.latest_requests()) == seq_id
+        request = httpretty.last_request()
+        assert request.headers["DD-Telemetry-Request-Type"] == "app-heartbeat"
+        assert request.parsed_body == _get_request_body({}, "app-heartbeat", seq_id=seq_id)
+
+    # Assert clean slate
+    assert len(httpretty.latest_requests()) == 0
+
+    # Within 60 seconds of telemetry writer creation, no event is queued
+    telemetry_writer.app_heartbeat_event()
+    telemetry_writer.periodic()
+    assert len(httpretty.latest_requests()) == 0
+
+    # Advance time 60 seconds
+    mock_time.return_value += 60
+
+    # Manual queueing and calling periodic will only queue and flush 1 event
+    telemetry_writer.app_heartbeat_event()
+    telemetry_writer.periodic()
+    assert_app_heartbeat_event(1)
+
+    # Advance time 120 seconds (2 intervals)
+    mock_time.return_value += 120
+
+    # Calling multiple times will only enqueue one event
+    telemetry_writer.app_heartbeat_event()
+    telemetry_writer.app_heartbeat_event()
+    telemetry_writer.app_heartbeat_event()
+    telemetry_writer.app_heartbeat_event()
+    telemetry_writer.periodic()
+    assert_app_heartbeat_event(2)
+
+
+def test_app_heartbeat_event_fork(mock_time, telemetry_writer):
+    # type: (mock.Mock, TelemetryWriter) -> None
+    """asserts that we do not queue/send app-heartbeat events on forks"""
+    if os.fork() == 0:
+        # Advance time 120 seconds (2 intervals)
+        mock_time.return_value += 120
+
+        telemetry_writer.app_heartbeat_event()
+        telemetry_writer.app_heartbeat_event()
+        telemetry_writer.app_heartbeat_event()
+        telemetry_writer.app_heartbeat_event()
+        telemetry_writer.periodic()
+        # Kill the process so it doesn't continue running the rest of the test suite
+        assert len(httpretty.latest_requests()) == 0
+        os._exit(0)
 
 
 def test_app_started_event_on_fork(telemetry_writer):
@@ -273,7 +376,7 @@ def test_telemetry_graceful_shutdown(mock_time, mock_send_request, telemetry_wri
 def _get_request_body(payload, payload_type, seq_id=1):
     """used to test the body of requests intercepted by httpretty"""
     return {
-        "tracer_time": 1642544540,
+        "tracer_time": time.time(),
         "runtime_id": get_runtime_id(),
         "api_version": "v1",
         "seq_id": seq_id,
