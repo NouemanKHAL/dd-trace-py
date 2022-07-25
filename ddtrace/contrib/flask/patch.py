@@ -111,6 +111,7 @@ class _FlaskWSGIMiddleware(_DDWSGIMiddlewareBase):
             query=request.query_string,
             parsed_query=request.args,
             request_headers=request.headers,
+            request_cookies=request.cookies,
         )
 
 
